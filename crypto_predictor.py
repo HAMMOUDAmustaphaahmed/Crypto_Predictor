@@ -731,39 +731,7 @@ def run_price_predictor():
         
         st.plotly_chart(fig_rsi, use_container_width=True)
     
-    with tab3:
-        # Fibonacci Levels chart
-        fig_fib = go.Figure()
-        
-        # Add price line
-        fig_fib.add_trace(go.Scatter(
-            x=data.index[-display_points:], 
-            y=data['close'][-display_points:], 
-            name='Price',
-            line=dict(color='blue')
-        ))
-        
-        # Add Fibonacci levels
-        fib_cols = ['fib_23.6', 'fib_38.2', 'fib_50.0', 'fib_61.8', 'fib_78.6']
-        colors = ['#FF0000', '#FFA500', '#00FF00', '#0000FF', '#800080']
-        
-        for col, color in zip(fib_cols, colors):
-            fig_fib.add_trace(go.Scatter(
-                x=data.index[-display_points:], 
-                y=data[col][-display_points:], 
-                name=col,
-                line=dict(color=color, dash='dash')
-            ))
-        
-        fig_fib.update_layout(
-            title=f"Fibonacci Retracement Levels (Last {display_points} {timeframe_selected} Periods)",
-            xaxis_title="Date/Time",
-            yaxis_title="Price (USDT)",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        
-        st.plotly_chart(fig_fib, use_container_width=True)
+
     
     # Add model info section
     with st.expander("Model Information"):
