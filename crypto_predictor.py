@@ -788,59 +788,280 @@ def run_price_predictor():
     and unpredictable. Do not make investment decisions based solely on this forecast.
     """)
 
+# Constantes pour les timeframes
+TIMEFRAMES = {
+    '15 Minutes': '15m',
+    '30 Minutes': '30m',
+    '1 Heure': '1h',
+    '2 Heures': '2h',
+    '4 Heures': '4h',
+    '1 Jour': '1d'
+}
+
+# Configuration de la mise en page
+STYLE = {
+    'success': 'background-color: #1c4b27',
+    'danger': 'background-color: #4b1c1c',
+    'warning': 'background-color: #4b451c'
+}
+
 def run_custom_strategy_scanner():
-    st.header("Custom Strategy Scanner")
+    st.header("Scanner de Stratégie Personnalisé")
     
-    # Create a modal-like interface using Streamlit columns and expanders
-    with st.expander("📈 Custom Strategy Parameters", expanded=True):
-        # Timeframe selection
-        timeframes = {
-            '15 Minutes': '15m',
-            '30 Minutes': '30m',
-            '1 Hour': '1h',
-            '2 Hours': '2h',
-            '4 Hours': '4h',
-            '1 Day': '1d',
-            '1 Week': '1w',
-            '1 Month': '1M'
-        }
-        timeframe_display = list(timeframes.keys())
-        timeframe = st.selectbox("Select Timeframe", timeframe_display, index=5)  # Default to 1 Day
-        
-        # Number of candles to parse
+    with st.expander("📈 Paramètres du Scanner", expanded=True):
         num_candles = st.number_input(
-            "Number of Candles to Parse", 
+            "Nombre de Bougies à Analyser", 
             min_value=10, 
             max_value=200, 
             value=50,
-            help="Number of recent candles to analyze for the COR strategy"
+            help="Nombre de bougies récentes à analyser pour la stratégie COR"
         )
         
-        # Start scanning button
-        if st.button("🔍 Start Scanning USDT Pairs"):
-            with st.spinner(f"Scanning all USDT pairs with {timeframe} timeframe..."):
-                matching_pairs = scan_usdt_pairs_for_strategy(timeframes[timeframe], num_candles)
+        if st.button("🔍 Lancer l'Analyse Complète"):
+            # Créer un conteneur pour chaque timeframe
+            timeframe_containers = {}
+            for timeframe_name in TIMEFRAMES.keys():
+                timeframe_containers[timeframe_name] = st.empty()
             
-            if matching_pairs:
-                st.success(f"Found {len(matching_pairs)} pairs matching the strategy!")
+            # Créer un conteneur pour les résultats en direct
+            live_results = st.container()
+            with live_results:
+                st.subheader("🔄 Résultats en Direct")
+                results_table = st.empty()
                 
-                # Create results table
-                results = []
-                for pair in matching_pairs:
-                    results.append([
-                        pair['pair'],
-                        f"{pair['cor_info']['open']:.2f} / {pair['cor_info']['close']:.2f}",
-                        f"{pair['current_price']:.2f}"
-                    ])
-                
-                results_df = pd.DataFrame(
-                    results,
-                    columns=["USDT Pair", "COR Open/Close", "Current Price"]
+                # Initialiser le DataFrame des résultats
+                all_results_df = pd.DataFrame(
+                    columns=["Timeframe", "Paire USDT", "COR Ouverture/Fermeture", 
+                            "Prix Actuel", "Range %", "Zone de Trading"]
                 )
                 
-                st.table(results_df)
+                # Pour chaque timeframe
+                for timeframe_name, timeframe_code in TIMEFRAMES.items():
+                    container = timeframe_containers[timeframe_name]
+                    with container:
+                        st.markdown(f"**Analyse du {timeframe_name}**")
+                        
+                        matching_pairs = scan_usdt_pairs_for_strategy(timeframe_code, num_candles)
+                        
+                        if matching_pairs:
+                            # Ajouter chaque nouvelle paire aux résultats
+                            for pair in matching_pairs:
+                                new_row = pd.DataFrame([{
+                                    "Timeframe": timeframe_name,
+                                    "Paire USDT": pair['pair'],
+                                    "COR Ouverture/Fermeture": f"{pair['cor_info']['open']:.2f} / {pair['cor_info']['close']:.2f}",
+                                    "Prix Actuel": f"{pair['current_price']:.2f}",
+                                    "Range %": f"{pair['cor_info'].get('range_percentage', 0):.2f}%",
+                                    "Zone de Trading": "✅" if pair['cor_info'].get('in_trading_zone', False) else "❌"
+                                }])
+                                
+                                all_results_df = pd.concat([all_results_df, new_row], ignore_index=True)
+                                
+                                # Mettre à jour le tableau des résultats
+                                results_table.dataframe(
+                                    all_results_df.style.apply(lambda x: ['background-color: #1c4b27' 
+                                                                        if x['Zone de Trading'] == "✅" 
+                                                                        else 'background-color: #4b1c1c' 
+                                                                        for i in x], axis=1)
+                                )
+                        
+                        # Afficher un message si aucune correspondance
+                        else:
+                            st.info(f"Aucune correspondance trouvée pour {timeframe_name}")
+
+def display_all_results(all_results):
+    """
+    Affiche les résultats pour tous les timeframes
+    """
+    if not all_results:
+        st.warning("Aucune correspondance trouvée sur aucun timeframe.")
+        return
+    
+    # Créer des onglets pour chaque timeframe
+    tabs = st.tabs(list(all_results.keys()))
+    
+    # Pour chaque timeframe
+    for tab, (timeframe, pairs) in zip(tabs, all_results.items()):
+        with tab:
+            st.subheader(f"Résultats pour {timeframe}")
+            
+            # Créer le DataFrame des résultats
+            results = []
+            for pair in pairs:
+                results.append([
+                    pair['pair'],
+                    f"{pair['cor_info']['open']:.2f} / {pair['cor_info']['close']:.2f}",
+                    f"{pair['current_price']:.2f}",
+                    f"{pair['cor_info'].get('range_percentage', 0):.2f}%",
+                    "✅" if pair['cor_info'].get('in_trading_zone', False) else "❌"
+                ])
+            
+            if results:
+                results_df = pd.DataFrame(
+                    results,
+                    columns=["Paire USDT", "COR Ouverture/Fermeture", "Prix Actuel", "Range %", "Zone de Trading"]
+                )
+                
+                # Afficher le tableau avec mise en forme conditionnelle
+                st.dataframe(
+                    results_df.style.apply(lambda x: ['background-color: #1c4b27' 
+                                                    if x['Zone de Trading'] == "✅" 
+                                                    else 'background-color: #4b1c1c' 
+                                                    for i in x], axis=1)
+                )
+                
+                # Ajouter des statistiques
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Nombre de Paires", len(results))
+                with col2:
+                    in_zone = sum(1 for r in results if r[4] == "✅")
+                    st.metric("En Zone de Trading", f"{in_zone} ({in_zone/len(results)*100:.1f}%)")
+                with col3:
+                    avg_range = sum(float(r[3].replace('%', '')) for r in results) / len(results)
+                    st.metric("Range Moyen", f"{avg_range:.1f}%")
             else:
-                st.warning("No pairs matched the strategy criteria.")
+                st.info(f"Aucune correspondance trouvée pour {timeframe}")
+
+def find_biggest_green_candle_strategy(data, num_candles_to_check):
+    """
+    Find the biggest green candle and check if subsequent candles follow the strategy
+    
+    Parameters:
+    data (DataFrame): OHLCV data
+    num_candles_to_check (int): Number of recent candles to check
+    
+    Returns:
+    tuple: (success, cor_info, current_price)
+    """
+    if data is None or len(data) < num_candles_to_check + 2:  # Need at least num_candles_to_check + 2 candles
+        return False, None, None
+    
+    # Get the last num_candles_to_check candles, excluding the 2 most recent
+    recent_data = data.iloc[-(num_candles_to_check+2):-2].copy()
+    
+    # Calculate green candle size (close - open for green candles)
+    recent_data['green_size'] = np.where(
+        recent_data['close'] > recent_data['open'],
+        recent_data['close'] - recent_data['open'],
+        0
+    )
+    
+    # Find the biggest green candle
+    biggest_green_idx = recent_data['green_size'].idxmax()
+    
+    # If there's no green candle, return False
+    if recent_data.loc[biggest_green_idx, 'green_size'] == 0:
+        return False, None, None
+    
+    cor_open = recent_data.loc[biggest_green_idx, 'open']
+    cor_close = recent_data.loc[biggest_green_idx, 'close']
+    
+    # Calculate the average (moyenne)
+    moyenne = (cor_open + cor_close) / 2
+    
+    # Get candles after the COR
+    post_cor_data = data.loc[biggest_green_idx:].iloc[1:]
+    
+    # Check if all post-COR candles have high and low between COR close and moyenne
+    upper_bound = max(cor_close, moyenne)
+    lower_bound = min(cor_close, moyenne)
+    
+    condition_met = True
+    for idx, row in post_cor_data.iterrows():
+        if row['high'] > upper_bound or row['low'] < lower_bound:
+            condition_met = False
+            break
+    
+    # Get current price (close of the latest candle)
+    current_price = data['close'].iloc[-1]
+    
+    cor_info = {
+        'date': biggest_green_idx,
+        'open': cor_open,
+        'close': cor_close,
+        'moyenne': moyenne,
+    }
+    
+    return condition_met, cor_info, current_price
+
+def scan_usdt_pairs_for_strategy(timeframe, num_candles):
+    """
+    Analyse tous les pairs USDT pour un timeframe donné
+    """
+    # Récupérer les paires USDT
+    pairs = get_binance_usdt_pairs()
+    if not pairs:
+        return []
+    
+    # Ajuster la période d'historique
+    lookback_days = adjust_lookback_for_interval(timeframe)
+    
+    # Initialiser la liste des résultats
+    matching_pairs = []
+    
+    # Configurer la barre de progression pour ce timeframe
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        progress_bar = st.progress(0)
+    with col2:
+        pairs_counter = st.empty()
+    
+    # Parcourir les paires
+    for i, pair in enumerate(pairs):
+        # Mettre à jour le compteur
+        pairs_counter.text(f"Paire {i+1}/{len(pairs)}")
+        progress_bar.progress((i + 1) / len(pairs))
+        
+        try:
+            # Obtenir les données historiques
+            _, data = get_binance_historical_data(
+                pair.replace("/", ""),
+                interval=timeframe,
+                lookback_days=lookback_days
+            )
+            
+            # Vérifier la stratégie
+            success, cor_info, current_price = find_biggest_green_candle_strategy(
+                data,
+                num_candles
+            )
+            
+            if success:
+                matching_pairs.append({
+                    'pair': pair,
+                    'cor_info': cor_info,
+                    'current_price': current_price
+                })
+        except Exception as e:
+            continue
+    
+    # Nettoyer l'affichage
+    progress_bar.empty()
+    pairs_counter.empty()
+    
+    return matching_pairs
+
+def main():
+    st.set_page_config(
+        page_title="🚀 Crypto Predictor Pro",
+        page_icon="📈",
+        layout="wide"
+    )
+    
+    st.title("🚀 Crypto Predictor Pro")
+    
+    # Créer une navigation dans la barre latérale
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio(
+        "Choisir une section:",
+        ["Prédicteur de Prix", "Scanner de Stratégie"]
+    )
+    
+    if page == "Prédicteur de Prix":
+        run_price_predictor()
+    else:
+        run_custom_strategy_scanner()
 
 if __name__ == "__main__":
     main()
